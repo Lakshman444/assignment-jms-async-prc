@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+	<jms:config name="JMS_Config" doc:name="JMS Config" doc:id="04834a52-fe92-433a-8948-0d8c7ecb58cd" >
+		<jms:active-mq-connection username="admin" password="admin" >
+			<jms:factory-configuration brokerUrl="tcp://localhost:61616" />
+		</jms:active-mq-connection>
+	</jms:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="52cbdbb3-4897-4a78-9ee2-8bed2a6974b0" >
+		<file:connection workingDir="E:\jms async" />
+	</file:config>
+	<flow name="jms-sync-prcFlow" doc:id="add41e74-a879-44ec-a714-f9567e6d7744" >
+		<ee:transform doc:name="Transform Message" doc:id="8543562c-500e-4c48-a9fb-1433ee7a1337" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	userId1: attributes.queryParams.userId1,
+	userId2: attributes.queryParams.userId2,
+	userId3: attributes.queryParams.userId3
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<jms:publish doc:name="Publish" doc:id="71092a94-892a-4637-bdfe-0749b8b6ba2a" config-ref="JMS_Config" destination="q1">
+			<jms:message correlationId="#[correlationId]" />
+		</jms:publish>
+		<set-variable value="#[correlationId]" doc:name="Set Variable" doc:id="0d4dfddd-f6ec-4f23-ac42-c7dba8a9003a" variableName="name"/>
+		<os:store doc:name="Store" doc:id="0463cfb7-7cf5-4f57-9e83-d746ef33f1e7" key="key">
+			<os:value ><![CDATA[#[correlationId]]]></os:value>
+		</os:store>
+	</flow>
+	<flow name="jms-async-prcFlow" doc:id="13a15f21-4a16-4194-b4d7-8f6e2531348b" >
+		<jms:listener doc:name="On New Message" doc:id="bdbb233f-bde5-4203-b92e-f55a316d7f6d" config-ref="JMS_Config" destination="q2">
+			<jms:consumer-type >
+				<jms:queue-consumer />
+			</jms:consumer-type>
+			<jms:response correlationId="#[correlationId]" />
+		</jms:listener>
+		<set-variable value="#[correlationId]" doc:name="Set Variable" doc:id="218b80bd-b346-41a7-b0cc-6a187f83f527" variableName="name"/>
+		<os:retrieve doc:name="Retrieve" doc:id="246b9727-2e7c-41b6-aa2a-a6ffaf1f1bf6" key="key">
+			<os:default-value ><![CDATA[0]]></os:default-value>
+		</os:retrieve>
+		<choice doc:name="Choice" doc:id="b1a772f2-539a-4139-a777-73ae92639d24" >
+			<when expression="#[vars.name==payload]">
+				<file:write doc:name="Write" doc:id="940bb012-cef1-4b24-8e94-8742ee3b5803" config-ref="File_Config" path="E:\jms async\message">
+					<file:content ><![CDATA[#["recieved response with correlationId " ++ vars.name]]]></file:content>
+				</file:write>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="aceb96dd-5dbf-4130-95b4-27f771ce5dae" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"wrong userId"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
